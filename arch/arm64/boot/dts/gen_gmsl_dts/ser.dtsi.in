@@ -1,0 +1,88 @@
+{% set address = ser_cfg.address | d(default_address) %}
+{% set compatible = ser_cfg.compatible | d(default_compatible) | str_quote %}
+{% set pool_addrs = ser_cfg.pool_addrs | d(['0x50', '0x51']) | join(' ') %}
+{% set ser_label = ser_label_x(ser_idx) %}
+{% set i2c_label = des_i2c_label_x(ser_idx) %}
+{% set ser_i2c = ser_i2c_label_x(ser_idx) %}
+
+&{{ i2c_label }} {
+	{{ ser_label }}: gmsl-serializer@{{ address }} {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#gpio-cells = <2>;
+
+		compatible = {{ compatible }};
+		reg = <{{ address }}>;
+
+		gpio-controller;
+		gpio-ranges = <&{{ ser_label }} 0 0 11>;
+
+		i2c-alias-pool = <{{ pool_addrs }}>;
+
+		i2c-atr {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			{{ ser_i2c }}: i2c@0 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0>;
+			};
+		};
+
+		pipe@0 {
+			reg = <0>;
+			maxim,stream-id = <{{ ser_idx }}>;
+		};
+
+		channel@0 {
+			reg = <0>;
+			label = "ser_{{ ser_idx }}_ch_0";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					{{ ser_ch_out_label_x(ser_idx) }}: endpoint {
+						remote-endpoint = <&{{ des_ch_in_label_x(ser_idx) }}>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					{{ ser_ch_in_label_x(ser_idx) }}: endpoint {
+						remote-endpoint = <&{{ cam_out_label_x(ser_idx) }}>;
+					};
+				};
+			};
+		};
+
+		channel@1 {
+			reg = <1>;
+			label = "ser_{{ ser_idx }}_ch_1";
+			maxim,embedded-data;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					ser_{{ ser_idx }}_ch_1_out: endpoint {
+						remote-endpoint = <&des_ch_{{ ser_idx + num_cameras }}_in>;
+					};
+				};
+			};
+		};
+	};
+};
+
+{% for cam_cfg in ser_cfg.cameras %}
+	{% set cam_idx = loop.index0 %}
+	{% include '%s.dtsi.in' % cam_cfg.name %}
+{% endfor %}

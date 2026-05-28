@@ -1,0 +1,172 @@
+{% set address = des_cfg.address | d(default_address) %}
+{% set compatible = des_cfg.compatible | d(default_compatible) | str_quote %}
+{% set pool_addrs = des_cfg.pool_addrs | d(['0x41', '0x42', '0x43', '0x44']) | join(' ') %}
+{% set platform_cfg = des_cfg.platform_cfg %}
+{% set des_label = 'des' %}
+{% set num_cameras = des_cfg.links | length %}
+
+{# --- Label macros --- #}
+{% macro des_ch_out_label_x(x) -%}
+	des_ch_{{ x }}_out
+{%- endmacro %}
+{% macro des_ch_in_label_x(x) -%}
+	des_ch_{{ x }}_in
+{%- endmacro %}
+{% macro des_i2c_label_x(x) -%}
+{%- if x >= num_links -%}
+	{{ raise_exception('Invalid serializer index ' ~ x) }}
+{%- endif -%}
+	des_i2c_{{ x }}
+{%- endmacro %}
+{% macro ser_label_x(x) -%}
+	ser_{{ x }}
+{%- endmacro %}
+{% macro ser_ch_out_label_x(x) -%}
+	ser_{{ x }}_ch_0_out
+{%- endmacro %}
+{% macro ser_ch_in_label_x(x) -%}
+	ser_{{ x }}_ch_0_in
+{%- endmacro %}
+{% macro ser_i2c_label_x(x) -%}
+	ser_{{ x }}_i2c_0
+{%- endmacro %}
+{% macro cam_label_x(x) -%}
+	cam_{{ x }}
+{%- endmacro %}
+{% macro cam_out_label_x(x) -%}
+	cam_{{ x }}_out
+{%- endmacro %}
+{% macro csi_in_label_x(x) -%}
+	csi_{{ x }}_in
+{%- endmacro %}
+{% macro csi_out_label_x(x) -%}
+	csi_{{ x }}_out
+{%- endmacro %}
+{% macro vi_in_label_x(x) -%}
+	vi_in{{ x }}
+{%- endmacro %}
+
+{# --- I2C bus clock frequency --- #}
+{% if des_cfg.i2c_clock_frequency is defined %}
+&{{ des_cfg.i2c_bus }} {
+	clock-frequency = <{{ des_cfg.i2c_clock_frequency }}>;
+};
+
+{% endif %}
+{# --- Deserializer node --- #}
+&{{ des_cfg.i2c_bus }} {
+	{{ des_label }}: gmsl-deserializer@{{ address }} {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		compatible = {{ compatible }};
+		reg = <{{ address }}>;
+
+		i2c-alias-pool = <{{ pool_addrs }}>;
+
+{% for phy_cfg in des_cfg.phys %}
+{% set phy_idx = phy_cfg.phy_idx %}
+		phy@{{ phy_idx }} {
+			reg = <{{ phy_idx }}>;
+{% if phy_cfg.pipe_stream_autoselect | d(true) %}
+			maxim,pipe-stream-autoselect;
+{% endif %}
+		};
+
+{% endfor %}
+{# --- Channels (one per link/camera) --- #}
+{% for ser_cfg in des_cfg.links %}
+{% set ch_idx = loop.index0 %}
+{% set phy_cfg = des_cfg.phys[0] %}
+{% set phy_idx = phy_cfg.phy_idx %}
+{% set clock_lanes_val = phy_cfg.clock_lanes | d([0]) %}
+{% set data_lanes = phy_cfg.data_lanes | join(' ') %}
+{% set link_freq = phy_cfg.link_frequencies | join(' ') %}
+{% set clock_lanes = clock_lanes_val[0] %}
+		channel@{{ ch_idx }} {
+			reg = <{{ ch_idx }}>;
+			label = "{{ des_ch_out_label_x(ch_idx) | replace('_out', '') }}";
+			maxim,phy-id = <{{ phy_idx }}>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					{{ des_ch_out_label_x(ch_idx) }}: endpoint {
+						clock-lanes = <{{ clock_lanes }}>;
+						data-lanes = <{{ data_lanes }}>;
+						link-frequencies = /bits/ 64 <{{ link_freq }}>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					{{ des_ch_in_label_x(ch_idx) }}: endpoint {
+						remote-endpoint = <&{{ ser_ch_out_label_x(ch_idx) }}>;
+					};
+				};
+			};
+		};
+
+{% endfor %}
+{# --- Embedded data channels (one per link, indexed at num_cameras + ch_idx) --- #}
+{% for ser_cfg in des_cfg.links %}
+{% set ch_idx = loop.index0 %}
+{% set phy_cfg = des_cfg.phys[0] %}
+{% set phy_idx = phy_cfg.phy_idx %}
+{% set emb_ch_idx = ch_idx + num_cameras %}
+		channel@{{ emb_ch_idx }} {
+			reg = <{{ emb_ch_idx }}>;
+			label = "{{ des_ch_in_label_x(emb_ch_idx) | replace('_in', '') }}";
+			maxim,phy-id = <{{ phy_idx }}>;
+			maxim,embedded-data;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@1 {
+					reg = <1>;
+
+					{{ des_ch_in_label_x(emb_ch_idx) }}: endpoint {
+						remote-endpoint = <&ser_{{ ch_idx }}_ch_1_out>;
+					};
+				};
+			};
+		};
+
+{% endfor %}
+{# --- I2C ATR --- #}
+{% if use_atr %}
+		i2c-atr {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+{% for ser_cfg in des_cfg.links %}
+{% set ch_idx = loop.index0 %}
+			{{ des_i2c_label_x(ch_idx) }}: i2c@{{ ch_idx }} {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <{{ ch_idx }}>;
+			};
+
+{% endfor %}
+		};
+{% endif %}
+	};
+};
+
+{# --- Platform template --- #}
+{% if platform_cfg %}
+{% include '%s.dtsi.in' % platform_cfg.name %}
+{% endif %}
+
+{# --- Serializer templates --- #}
+{% for ser_cfg in des_cfg.links %}
+	{% set ser_idx = loop.index0 %}
+	{% include '%s.dtsi.in' % ser_cfg.name %}
+{% endfor %}

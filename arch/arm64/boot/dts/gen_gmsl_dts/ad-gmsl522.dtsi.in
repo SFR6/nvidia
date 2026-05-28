@@ -1,0 +1,132 @@
+{% set num_cameras = des_cfg.links | length %}
+{% set tegra_port = platform_cfg.tegra_port | d(4) %}
+{% set phy_cfg = des_cfg.phys[0] %}
+{% set num_lanes = phy_cfg.num_lanes | d(4) %}
+{% set tegra_sinterface = platform_cfg.tegra_sinterface | d('serial_e') %}
+{% set positions = ['topleft', 'topright', 'bottomleft', 'bottomright'] %}
+
+{# --- Label macros --- #}
+{% macro des_ch_out_label_x(x) -%}
+	des_ch_{{ x }}_out
+{%- endmacro %}
+{% macro csi_in_label_x(x) -%}
+	csi_{{ x }}_in
+{%- endmacro %}
+{% macro csi_out_label_x(x) -%}
+	csi_{{ x }}_out
+{%- endmacro %}
+{% macro vi_in_label_x(x) -%}
+	vi_in{{ x }}
+{%- endmacro %}
+{% macro cam_label_x(x) -%}
+	cam_{{ x }}
+{%- endmacro %}
+
+{# --- VI: create ports from scratch --- #}
+&{/} {
+	tegra-capture-vi {
+		num-channels = <{{ num_cameras }}>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+{% for ser_cfg in des_cfg.links %}
+{% set idx = loop.index0 %}
+			port@{{ idx }} {
+				reg = <{{ idx }}>;
+
+				{{ vi_in_label_x(idx) }}: endpoint {
+					vc-id = <{{ idx }}>;
+					port-index = <{{ tegra_port }}>;
+					bus-width = <{{ num_lanes }}>;
+					remote-endpoint = <&{{ csi_out_label_x(idx) }}>;
+				};
+			};
+
+{% endfor %}
+		};
+	};
+
+{# --- Tegra camera platform --- #}
+	tegra-camera-platform {
+		compatible = "nvidia, tegra-camera-platform";
+		num_csi_lanes = <{{ num_lanes }}>;
+		max_lane_speed = <{{ num_lanes * 1000000 }}>;
+		min_bits_per_pixel = <10>;
+		vi_peak_byte_per_pixel = <2>;
+		vi_bw_margin_pct = <25>;
+		max_pixel_rate = <240000>;
+		isp_peak_byte_per_pixel = <5>;
+		isp_bw_margin_pct = <25>;
+
+		nv,proc-device-tree-paths = {% for i in range(num_cameras) %}"{{ cam_label_x(i) }}"{{ ', ' if not loop.last }}{% endfor %};
+		nv,proc-device-tree-targets = <{% for i in range(num_cameras) %}&{{ cam_label_x(i) }}{{ ' ' if not loop.last }}{% endfor %}>;
+
+		modules {
+{% for i in range(num_cameras) %}
+			module{{ i }} {
+				badge = "jakku_front_camera{{ i }}";
+				position = "{{ positions[i % 4] }}";
+				orientation = "1";
+
+				drivernode0 {
+					pcl_id = "v4l2_sensor";
+					devname = "{{ cam_label_x(i) }}";
+					proc-device-tree = "/proc/device-tree/tegra-camera-platform/{{ cam_label_x(i) }}";
+				};
+			};
+
+{% endfor %}
+		};
+	};
+};
+
+{# --- NVCSI: create channels from scratch --- #}
+&{/host1x@13e00000} {
+	nvcsi@15a00000 {
+		num-channels = <{{ num_cameras }}>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+{% for ser_cfg in des_cfg.links %}
+{% set idx = loop.index0 %}
+		channel@{{ idx }} {
+			reg = <{{ idx }}>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					{{ csi_in_label_x(idx) }}: endpoint {
+						port-index = <{{ tegra_port }}>;
+						bus-width = <{{ num_lanes }}>;
+						remote-endpoint = <&{{ des_ch_out_label_x(idx) }}>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					{{ csi_out_label_x(idx) }}: endpoint {
+						remote-endpoint = <&{{ vi_in_label_x(idx) }}>;
+					};
+				};
+			};
+		};
+
+{% endfor %}
+	};
+};
+
+{# --- Wire deserializer channel outputs to NVCSI inputs --- #}
+{% for ser_cfg in des_cfg.links %}
+{% set idx = loop.index0 %}
+&{{ des_ch_out_label_x(idx) }} {
+	remote-endpoint = <&{{ csi_in_label_x(idx) }}>;
+};
+
+{% endfor %}

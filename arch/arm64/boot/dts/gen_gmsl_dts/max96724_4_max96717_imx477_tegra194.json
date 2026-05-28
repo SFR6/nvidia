@@ -1,0 +1,42 @@
+[{
+    "name": "max96724",
+    "i2c_bus": "gen2_i2c",
+    "i2c_clock_frequency": 400000,
+    "pool_addrs": ["0x41", "0x42", "0x43", "0x44"],
+    "platform_cfg": {
+        "name": "ad-gmsl522",
+        "tegra_port": 4,
+        "tegra_sinterface": "serial_e",
+        "base_channels": 4
+    },
+    "phys": [{
+        "phy_idx": 2,
+        "num_lanes": 4,
+        "link_frequencies": [750000000],
+        "clock_lanes": [0],
+        "data_lanes": [1, 2, 3, 4],
+        "pipe_stream_autoselect": false
+    }],
+    "links": [
+        {
+            "name": "max96717",
+            "cameras": [{"name": "imx477"}],
+            "pool_addrs": ["0x50", "0x51"]
+        },
+        {
+            "name": "max96717",
+            "cameras": [{"name": "imx477"}],
+            "pool_addrs": ["0x52", "0x53"]
+        },
+        {
+            "name": "max96717",
+            "cameras": [{"name": "imx477"}],
+            "pool_addrs": ["0x54", "0x55"]
+        },
+        {
+            "name": "max96717",
+            "cameras": [{"name": "imx477"}],
+            "pool_addrs": ["0x56", "0x57"]
+        }
+    ]
+}]

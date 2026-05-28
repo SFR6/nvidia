@@ -1,0 +1,201 @@
+{% set cam_label = cam_label_x(ser_idx) %}
+{% set cam_out = cam_out_label_x(ser_idx) %}
+{% set ser_label = ser_label_x(ser_idx) %}
+{% set ser_i2c = ser_i2c_label_x(ser_idx) %}
+{% set ser_ch_in = ser_ch_in_label_x(ser_idx) %}
+{% set reset_pin = cam_cfg.reset_pin | d(2) %}
+{% set rclk_pin = cam_cfg.rclk_pin | d(4) %}
+{% set tegra_sinterface = platform_cfg.tegra_sinterface | d('serial_e') %}
+{% set tegra_port = platform_cfg.tegra_port | d(4) %}
+{% set phy_cfg = des_cfg.phys[0] %}
+{% set num_lanes = phy_cfg.num_lanes | d(4) %}
+{% set link_freq = phy_cfg.link_frequencies[0] %}
+{% set rclk_label = ser_label ~ '_mfp' ~ rclk_pin ~ '_rclk' %}
+&{{ ser_i2c }} {
+	{{ cam_label }}: imx477@1a {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		compatible = "ridgerun,imx477";
+		reg = <0x1a>;
+		label = "{{ cam_label }}";
+
+		reset-gpios = <&{{ ser_label }} {{ reset_pin }} 0>;
+
+		physical_w = "7.564";
+		physical_h = "5.476";
+		sensor_model = "imx477";
+		use_sensor_mode_id = "true";
+
+		mode0 { /* IMX477_MODE_3840x2160_30FPS */
+			mclk_khz = "24000";
+			num_lanes = "{{ num_lanes }}";
+			sensor_num_lanes = "2";
+			tegra_sinterface = "{{ tegra_sinterface }}";
+			vc_id = "{{ ser_idx }}";
+			phy_mode = "DPHY";
+			discontinuous_clk = "no";
+			dpcm_enable = "false";
+			cil_settletime = "0";
+{% if platform_cfg.lane_polarity is defined %}
+			lane_polarity = "{{ platform_cfg.lane_polarity }}";
+{% endif %}
+
+			active_w = "3840";
+			active_h = "2160";
+			mode_type = "bayer";
+			pixel_phase = "rggb";
+			csi_pixel_bit_depth = "10";
+			readout_orientation = "90";
+			line_length = "11200";
+			inherent_gain = "1";
+			mclk_multiplier = "80";
+			pix_clk_hz = "300000000";
+
+			gain_factor = "16";
+			framerate_factor = "1000000";
+			exposure_factor = "1000000";
+			min_gain_val = "16";
+			max_gain_val = "356";
+			step_gain_val = "1";
+			default_gain = "16";
+			min_hdr_ratio = "1";
+			max_hdr_ratio = "1";
+
+			min_framerate = "2000000";
+			max_framerate = "30000000";
+			step_framerate = "1";
+			default_framerate = "30000000";
+
+			min_exp_time = "13";
+			max_exp_time = "683709";
+			step_exp_time = "1";
+			default_exp_time = "2495";
+
+			embedded_metadata_height = "2";
+
+			serdes_link_freq = "{{ link_freq }}";
+		};
+
+		mode1 { /* IMX477_MODE_1920x1080_60FPS */
+			mclk_khz = "24000";
+			num_lanes = "{{ num_lanes }}";
+			tegra_sinterface = "{{ tegra_sinterface }}";
+			vc_id = "{{ ser_idx }}";
+			phy_mode = "DPHY";
+			discontinuous_clk = "no";
+			dpcm_enable = "false";
+			cil_settletime = "0";
+{% if platform_cfg.lane_polarity is defined %}
+			lane_polarity = "{{ platform_cfg.lane_polarity }}";
+{% endif %}
+
+			active_w = "1920";
+			active_h = "1080";
+			mode_type = "bayer";
+			pixel_phase = "rggb";
+			csi_pixel_bit_depth = "10";
+			readout_orientation = "90";
+			line_length = "7000";
+			inherent_gain = "1";
+			mclk_multiplier = "80";
+			pix_clk_hz = "300000000";
+
+			gain_factor = "16";
+			framerate_factor = "1000000";
+			exposure_factor = "1000000";
+			min_gain_val = "16";
+			max_gain_val = "356";
+			step_gain_val = "1";
+			default_gain = "16";
+			min_hdr_ratio = "1";
+			max_hdr_ratio = "1";
+
+			min_framerate = "2000000";
+			max_framerate = "60000000";
+			step_framerate = "1";
+			default_framerate = "60000000";
+
+			min_exp_time = "13";
+			max_exp_time = "683709";
+			step_exp_time = "1";
+			default_exp_time = "2495";
+
+			embedded_metadata_height = "2";
+
+			serdes_link_freq = "{{ link_freq }}";
+		};
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				{{ cam_out }}: endpoint {
+					remote-endpoint = <&{{ ser_ch_in }}>;
+					port-index = <{{ tegra_port }}>;
+					bus-width = <{{ num_lanes }}>;
+					data-lanes = <1 2>;
+					clock-lanes = <0>;
+					clock-noncontinuous;
+				};
+			};
+		};
+	};
+};
+
+{# --- Serializer pipe and pin configuration for IMX477 --- #}
+{% set des_label = 'des' %}
+{% set phy_cfg = des_cfg.phys[0] %}
+{% set phy_idx = phy_cfg.phy_idx %}
+{% set emb_ch_idx = ser_idx + num_cameras %}
+
+&{{ ser_label }} {
+	pipe@0 {
+		maxim,dbl8;
+		maxim,soft-bpp = <10>;
+		maxim,bpp = <16>;
+	};
+
+	pins {
+		{{ rclk_label }}: ser_{{ ser_idx }}_mfp{{ rclk_pin }}_rclk {
+			pins = "mfp{{ rclk_pin }}";
+			function = "rclkout";
+			slew-rate = <0>;
+			maxim,rclkout-clock = <0>;
+		};
+	};
+};
+
+{# --- Wire serializer embedded channel to deserializer --- #}
+&ser_{{ ser_idx }}_ch_1_out {
+	remote-endpoint = <&des_ch_{{ emb_ch_idx }}_in>;
+};
+
+{# --- Deserializer PHY memory map --- #}
+&{{ des_label }} {
+	phy@{{ phy_idx }} {
+		maxim,alt2-mem-map8;
+	};
+
+{# --- Embedded data channel (des channel@N+num_cameras) --- #}
+	channel@{{ emb_ch_idx }} {
+		reg = <{{ emb_ch_idx }}>;
+		maxim,phy-id = <{{ phy_idx }}>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@1 {
+				reg = <1>;
+
+				des_ch_{{ emb_ch_idx }}_in: endpoint {
+					remote-endpoint = <&ser_{{ ser_idx }}_ch_1_out>;
+				};
+			};
+		};
+	};
+};
