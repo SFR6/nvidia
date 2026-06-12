@@ -27,11 +27,11 @@ Further instructions can be found in the [Driver Build documentation](https://gi
 | Jetson Orin Nano Developer Kit 	| [MAX96724 + 1xMAX96717 + 1xIMX219 on CAM1 at 2 lanes][cfg-3] 	            | [max96724_1_max96717_imx219_CAM1_tegra234.json][json-3] 	        |
 | Jetson Orin Nano Developer Kit 	| [MAX96724 + 2xMAX96717 + 2xIMX219 on CAM1 at 2 lanes][cfg-4]            	| [max96724_2_max96717_imx219_CAM1_tegra234.json][json-4] 	        |
 
-[cfg-0]: #max96724--2xmax9295a--2xmax96717--4xox03a-on-cam0-at-2-lanes
-[cfg-1]: #max96724--4xmax96717--4xox03a-on-cam0-at-2-lanes
-[cfg-2]: #test
-[cfg-3]: #max96724--2xmax9295a--2xmax96717--4xox03a-on-cam1-at-2-lanes
-[cfg-4]: #max96724--4xmax96717--4xox03a-on-cam1-at-2-lanes
+[cfg-0]: #max96716a--2xmax96717--2ximx219-on-cam0-at-2-lanes
+[cfg-1]: #max96716a--2xmax96717--2ximx219-on-cam1-at-2-lanes
+[cfg-2]: #max96716a--1xmax96717--1ximx219-on-cam1-at-4-lanes
+[cfg-3]: #max96724--1xmax96717--1ximx219-on-cam1-at-2-lanes
+[cfg-4]: #max96724--2xmax96717--2ximx219-on-cam1-at-2-lanes
 
 [json-0]: https://github.com/analogdevicesinc/linux/blob/gmsl/tegra-6.12.y/arch/arm64/boot/dts/gen_gmsl_dts/max96716_2_max96717_imx219_CAM0_tegra234.json
 [json-1]: https://github.com/analogdevicesinc/linux/blob/gmsl/tegra-6.12.y/arch/arm64/boot/dts/gen_gmsl_dts/max96716_2_max96717_imx219_CAM1_tegra234.json
@@ -114,7 +114,7 @@ fdtoverlay -i tegra234-p3768-0000+p3767-0005-nv-super.dtb -o tegra234-p3768-0000
 
 ### CFG Pin Levels
 
-EVKITs need to have their CFG Pin Levels configured using the [GMSL SerDes GUI Software](gui-0).
+EVKITs need to have their CFG Pin Levels configured using the [GMSL SerDes GUI Software][gui-0].
 
 To do this, open the software, navigate to the `Tools` tab, and then press on the `Set CFG Pin Levels` entry under the `Other Config` section.
 
@@ -295,7 +295,7 @@ The following commands will read and write register `0x8d3` from subdev `2`, whi
 
 These commands can only be run as root.
 
-Also a lot of useful information is printed using the stnadard V4L2 log-status API.
+Also a lot of useful information is printed using the standard V4L2 log-status API.
 
 `v4l2-ctl --log-status -d /dev/v4l-subdev2`
 
@@ -380,6 +380,8 @@ Status Log:
 ```
 
 ### Software configuration
+
+> **Note:** The `media-ctl -R` routing command requires v4l-utils **1.28+**. The stock Ubuntu Jammy package (v4l-utils 1.22.1) does not support the `-R` flag. You must build v4l-utils from source to use the routing commands below. See [Building v4l-utils from source](#building-v4l-utils-from-source) for instructions.
 
 Because of the way the V4L2 Media Entity framework works in, the serializers and deserializers will need to have the format and resolution configured at run-time.
 
@@ -480,6 +482,8 @@ And to start it again, use the following command.
 
 ### QV4L2
 
+> **Note:** The stock Ubuntu Jammy qv4l2 (1.22.1) crashes on Tegra due to an OpenGL incompatibility (`Unrecognized OpenGL version` followed by a segfault). Building v4l-utils 1.28+ from source fixes this. See [Building v4l-utils from source](#building-v4l-utils-from-source) for instructions.
+
 To test the cameras using qv4l2, you need to install the `qv4l2` package using the following command.
 
 `sudo apt install qv4l2`
@@ -493,6 +497,22 @@ To open 2 cameras at the same time, run the following command.
 `qv4l2 -d 0 & qv4l2 -d 1 &`
 
 The same applies for other cameras.
+
+### v4l2_player.py
+
+An alternative to qv4l2 is the [v4l2_player.py](https://github.com/analogdevicesinc/gmsl/tree/tools/AD-GMSL522-SL/python-v4l2-capture-scripts) script, which captures video from a V4L2 device and displays it using OpenCV with support for raw Bayer debayering.
+
+Install the required Python packages:
+
+```
+pip install opencv-python numpy v4l2-python3
+```
+
+Example usage for a raw Bayer sensor:
+
+```
+python3 v4l2_player.py -d /dev/video0 -x 1920 -y 1080 -b 2 -r
+```
 
 ### Argus + GStreamer
 
@@ -524,4 +544,23 @@ Index  Index  Index                                             CSI Dyn   Type
 GStreamer pipeline to capture from the sensor id `0`:
 ```
 gst-launch-1.0 nvarguscamerasrc sensor_id=0 ! 'video/x-raw(memory:NVMM),width=1280, height=720, framerate=59/1, format=NV12' ! nvegltransform ! nveglglessink
+```
+
+### Building v4l-utils from source
+
+The stock Ubuntu Jammy v4l-utils package (1.22.1) does not support `media-ctl -R` routing, which is required for configuring the GMSL media pipeline. It also ships a qv4l2 that crashes on Tegra due to an OpenGL incompatibility. Building v4l-utils 1.28+ from source fixes both issues.
+
+```
+sudo apt install git build-essential meson ninja-build pkg-config libudev-dev libjpeg-dev libqt5opengl5-dev qtbase5-dev
+git clone https://git.linuxtv.org/v4l-utils.git
+cd v4l-utils
+git checkout v4l-utils-1.28.1
+meson setup build
+ninja -C build
+sudo ninja -C build install
+```
+
+After installation, verify the version:
+```
+media-ctl --version
 ```

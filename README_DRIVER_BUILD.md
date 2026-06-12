@@ -9,6 +9,18 @@ the kernel, out-of-tree modules, device tree blobs, and installing them.
 
 ---
 
+## Flash the Base Image
+
+Before building and installing the ADI GMSL drivers, the Jetson board must be running the NVIDIA L4T R36.5.0 base image (JetPack 6.2.2).
+
+1. Download the base image from the [JetPack 6.2.2 SDK](https://developer.nvidia.com/embedded/jetpack-sdk-622).
+2. Follow the [Quick Start Guide](https://docs.nvidia.com/jetson/orin-nano-devkit/user-guide/latest/quick_start.html) to flash the board.
+3. If your board has older firmware, update it first by following the [Firmware Update Guide](https://docs.nvidia.com/jetson/orin-nano-devkit/user-guide/latest/update_firmware.html).
+
+For more details on the software packages and update mechanisms, see the [L4T R36.5 Developer Guide](https://docs.nvidia.com/jetson/archives/r36.5/DeveloperGuide/SD/SoftwarePackagesAndTheUpdateMechanism.html).
+
+---
+
 ## Prerequisites
 
 - x86_64 host running Ubuntu 20.04+ (or equivalent)
@@ -24,19 +36,24 @@ sudo apt install git build-essential bc flex bison libssl-dev libelf-dev
 ## 1. Download the L4T Driver Package
 
 Download the **L4T Driver Package (BSP) Sources R36.5.0** from the
-[Driver Package (BSP)](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v5.0/release/Jetson_Linux_r36.5.0_aarch64.tbz2)
+[Driver Package (BSP)](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v5.0/release/Jetson_Linux_R36.5.0_aarch64.tbz2)
 and extract it:
 
 ```bash
 mkdir -p ~/nvidia && cd ~/nvidia
-tar xf Jetson_Linux_r36.5.0_aarch64.tbz2
+tar xf Jetson_Linux_R36.5.0_aarch64.tbz2
 cd Linux_for_Tegra/source
 ```
 
 This gives you the top-level build scripts (`nvbuild.sh`, `source_sync.sh`,
 `kernel_src_build_env.sh`, `Makefile`).
 
-IT is recommended to download the recommended cross compiler for r36.5.0 form [NVIDIA Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive) and extract it in `Linux_for_Tegra/source/compiler`
+It is recommended to download the **Bootlin Toolchain gcc 11.3** cross compiler for R36.5.0 from the [NVIDIA Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive) and extract it in `Linux_for_Tegra/source/compiler`:
+
+```bash
+mkdir -p compiler
+tar xf aarch64--glibc--stable-2022.08-1.tar.bz2 -C compiler --strip-components=1
+```
 
 ---
 
@@ -46,8 +63,14 @@ Use the provided `source_sync.sh` to clone all kernel and OOT module
 repositories from NVIDIA's public GitLab. The `-k` flag downloads only kernel
 and device tree repositories (skip userspace components):
 
+> **Note:** There is a bug in `source_sync.sh` that prevents the `-k` flag from working correctly. On line 391, change `cut -f 5` to `cut -f 6`:
+> ```
+> DNLOAD=$(echo "${SOURCE_INFO_PROCESSED[i]}" | cut -f 6 -d ':')
+> ```
+> This is needed because the git URL contains a `:` (from `https://`), shifting the field index.
+
 ```bash
-./source_sync.sh -k -t jetson_36.5.0
+./source_sync.sh -k -t jetson_36.5
 ```
 
 > **Note:** `source_sync.sh` does **not** clone `kernel-6-12-y`. That kernel
